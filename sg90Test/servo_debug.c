@@ -5,7 +5,7 @@
 #include <errno.h>
 
 // 根据你的硬件文档：Pin 11 对应 PWM2_CH6_M2 -> pwmchip1
-#define PWM_BASE_PATH "/sys/class/pwm/pwmchip1"
+#define PWM_BASE_PATH "/sys/class/pwm/pwmchip2"
 #define PWM_PERIOD    20000000  // 20ms (50Hz)
 
 // 辅助函数：向文件写入字符串并打印日志
