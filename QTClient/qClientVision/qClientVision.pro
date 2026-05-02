@@ -7,11 +7,15 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    gesture_receiver.cpp \
     main.cpp \
-    jovideoplayer.cpp
+    jovideoplayer.cpp \
+    video_canvas.cpp
 
 HEADERS += \
-    jovideoplayer.h
+    gesture_receiver.h \
+    jovideoplayer.h \
+    video_canvas.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
