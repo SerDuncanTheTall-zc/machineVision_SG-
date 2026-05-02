@@ -1,0 +1,17 @@
+{
+  "name": "gesture-client",
+  "version-string": "1.0.0",
+  "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35",
+  "dependencies": [
+    {
+      "name": "protobuf",
+      "version>=": "3.21.12"
+    }
+  ],
+  "overrides": [
+    {
+      "name": "protobuf",
+      "version": "3.21.12"
+    }
+  ]
+}
