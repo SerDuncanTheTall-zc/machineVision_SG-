@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package gesture;
+
+// 坐标点定义
+message Point {
+    float x = 1; // 归一化坐标 (0.0 ~ 1.0)
+    float y = 2;
+}
+
+// 单个手势数据
+message Hand {
+    int32 id = 1;           // 追踪 ID
+    string label = 2;       // 手势标签 (如: "point_up", "fist")
+    float confidence = 3;   // 置信度
+    Point box_min = 4;      // 矩形框左上角
+    Point box_max = 5;      // 矩形框右下角
+    repeated Point landmarks = 6; // 21个手势关键点 (手部骨骼)
+}
+
+// 每一帧的完整数据包
+message FramePayload {
+    uint64 timestamp = 1;   // 板端采样时间戳 (ms)
+    int32 frame_id = 2;     // 帧序号
+    repeated Hand hands = 3; // 检测到的所有手
+}
