@@ -110,21 +110,35 @@ void JoVideoPlayer::setupUi()
     this->setCentralWidget(centralWidget);
 }
 
+//void JoVideoPlayer::onBtnConnectClicked()
+//{
+//    if (m_tcpSocket->state() == QAbstractSocket::UnconnectedState) {
+//        // 更新当前配置
+//        m_config.serverIp = m_editIp->text();
+//        m_config.tcpPort = m_editTcpPort->text().toUShort();
+//        m_config.udpDataPort = m_editUdpData->text().toUShort();
+//        m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
+//
+//        m_tcpSocket->connectToHost(m_config.serverIp, m_config.tcpPort);
+//        m_btnConnect->setText("Connecting...");
+//    }
+//    else {
+//        m_tcpSocket->disconnectFromHost();
+//    }
+//}
+
 void JoVideoPlayer::onBtnConnectClicked()
 {
-    if (m_tcpSocket->state() == QAbstractSocket::UnconnectedState) {
-        // 更新当前配置
-        m_config.serverIp = m_editIp->text();
-        m_config.tcpPort = m_editTcpPort->text().toUShort();
-        m_config.udpDataPort = m_editUdpData->text().toUShort();
-        m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
+    // 调试专用：跳过 TCP 建立过程，直接读取 UI 上的端口并开跑
+    m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
 
-        m_tcpSocket->connectToHost(m_config.serverIp, m_config.tcpPort);
-        m_btnConnect->setText("Connecting...");
-    }
-    else {
-        m_tcpSocket->disconnectFromHost();
-    }
+    qDebug() << "Testing mode: Skipping TCP, starting UDP Video on" << m_config.udpVideoPort;
+
+    // 直接调用启动函数
+    m_videoReceiver->start(m_config.udpVideoPort);
+
+    // 更新 UI 状态（假装连上了）
+    updateUiState(true);
 }
 
 void JoVideoPlayer::onTcpConnected()
