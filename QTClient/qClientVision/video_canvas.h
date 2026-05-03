@@ -5,31 +5,38 @@
 #include <QImage>
 #include <QList>
 #include <QMutex>
-#include "gesture_receiver.h" // 需要用到 HandData 结构体
+#include <QMutexLocker>
+#include "gesture_receiver.h" // 引用 HandData 结构体
 
+/**
+ * @brief 视频渲染画布
+ * 采用双层渲染架构：底层绘制 GStreamer 解码后的视频，顶层绘制 Protobuf 坐标框
+ */
 class VideoCanvas : public QWidget
 {
     Q_OBJECT
 public:
-    explicit VideoCanvas(QWidget *parent = nullptr);
-
-    // 供后续 FFmpeg 或 OpenCV 调用的接口，用来刷新背景视频
-    void updateVideoFrame(const QImage &frame);
+    explicit VideoCanvas(QWidget* parent = nullptr);
 
 public slots:
-    // 更新手势坐标框
-    void updateOverlay(const QList<HandData> &hands);
-    // 控制是否显示坐标框
+    // 接收并刷新背景视频帧（由 GstVideoReceiver 触发）
+    void updateVideoFrame(const QImage& frame);
+
+    // 更新手势识别坐标数据（由 GestureReceiver 触发）
+    void updateOverlay(const QList<HandData>& hands);
+
+    // 动态控制是否显示 AI 标注层
     void setDrawOverlay(bool enable);
 
 protected:
-    void paintEvent(QPaintEvent *event) override;
+    // 核心渲染逻辑
+    void paintEvent(QPaintEvent* event) override;
 
 private:
-    QImage m_currentFrame;
-    QList<HandData> m_hands;
-    bool m_drawOverlay;
-    QMutex m_mutex; // 保护数据并发访问
+    QImage m_currentFrame;          // 当前视频帧缓存
+    QList<HandData> m_hands;        // 当前手势列表缓存
+    bool m_drawOverlay;             // 绘制开关
+    QMutex m_mutex;                 // 跨线程数据保护锁
 };
 
 #endif // VIDEO_CANVAS_H
