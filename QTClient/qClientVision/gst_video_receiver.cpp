@@ -77,7 +77,7 @@ void GstVideoReceiver::start(int port) {
         }
 
         // 4. 生成拓扑图（方便对比 A/B 方案的差异）
-        GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(m_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline_debug");
+        // GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(m_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline_debug");
 
         qDebug() << ">>> PC 硬件解码器已成功启动，监听端口:" << port;
     }
