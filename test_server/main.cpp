@@ -1,7 +1,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <cmath>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -9,89 +8,62 @@
 #include <chrono>
 #include "gesture.pb.h"
 
-// 获取当前毫秒时间戳
 uint64_t get_timestamp_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
 }
 
-// 简单的模拟对象结构体
-struct SimulatedHand {
-    int id;
-    std::string label;
-    float x, y;       // 中心点坐标
-    float vx, vy;     // 速度向量
-    float size;       // 框的大小
-};
-
 int main() {
-    // 🚩 确认这是你 Windows 的实际 IP
-    const char* PC_IP = "192.168.2.101"; 
-    const int PC_PORT = 8888;
-
+    const int SERVER_PORT = 8888;
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("Socket 创建失败");
+    
+    struct sockaddr_in serv_addr, client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY; // 监听所有网卡
+    serv_addr.sin_port = htons(SERVER_PORT);
+
+    if (bind(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("绑定失败");
         return -1;
     }
 
-    struct sockaddr_in pc_addr;
-    pc_addr.sin_family = AF_INET;
-    pc_addr.sin_port = htons(PC_PORT);
-    pc_addr.sin_addr.s_addr = inet_addr(PC_IP);
+    std::cout << "🏠 Server 已就绪，等待 PC 客户端连接 (端口: " << SERVER_PORT << ")..." << std::endl;
 
-    std::cout << "🚀 动态手势模拟器已启动 -> 推送至 " << PC_IP << ":" << PC_PORT << std::endl;
+    // --- 第一阶段：等待客户端“拍一拍” ---
+    char buffer[1024];
+    int n = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &client_len);
+    
+    std::cout << "📢 侦测到客户端请求！IP: " << inet_ntoa(client_addr.sin_addr) 
+              << " Port: " << ntohs(client_addr.sin_port) << std::endl;
+    std::cout << "🎬 开始直播手势数据..." << std::endl;
 
-    // 初始化三个模拟对象
-    std::vector<SimulatedHand> hands = {
-        {1, "Crossover", 0.2f, 0.2f, 0.015f, 0.012f, 0.15f},
-        {2, "Step-Back", 0.5f, 0.8f, -0.010f, -0.018f, 0.12f},
-        {3, "Fadeaway",  0.8f, 0.3f, 0.020f, -0.008f, 0.18f}
-    };
-
+    // --- 第二阶段：开始发送数据 (逻辑同前，但目标地址是动态获取的) ---
     int frame_id = 0;
     while (true) {
         gesture::FramePayload payload;
         payload.set_timestamp(get_timestamp_ms());
         payload.set_frame_id(++frame_id);
 
-        for (auto& h : hands) {
-            // 1. 物理更新：位置 = 位置 + 速度
-            h.x += h.vx;
-            h.y += h.vy;
+        gesture::Hand* hand = payload.add_hands();
+        hand->set_id(1);
+        hand->set_label("Server_Mode"); // 标记一下模式
+        hand->set_confidence(0.99f);
+        
+        // 让框动起来方便观察
+        float offset = (frame_id % 100) / 200.0f;
+        hand->mutable_box_min()->set_x(0.1f + offset);
+        hand->mutable_box_min()->set_y(0.2f);
+        hand->mutable_box_max()->set_x(0.3f + offset);
+        hand->mutable_box_max()->set_y(0.5f);
 
-            // 2. 边界碰撞检测 (归一化范围 0.0 ~ 1.0)
-            float half_s = h.size / 2.0f;
-            if (h.x - half_s < 0 || h.x + half_s > 1.0f) h.vx *= -1; // X 轴反弹
-            if (h.y - half_s < 0 || h.y + half_s > 1.0f) h.vy *= -1; // Y 轴反弹
-
-            // 3. 填充 Protobuf 数据
-            gesture::Hand* hand_msg = payload.add_hands();
-            hand_msg->set_id(h.id);
-            hand_msg->set_label(h.label);
-            
-            // 模拟一个随抖动的置信度 (0.90 ~ 0.99)
-            float conf = 0.90f + static_cast<float>(rand() % 100) / 1000.0f;
-            hand_msg->set_confidence(conf);
-
-            // 设置检测框 (min 和 max)
-            hand_msg->mutable_box_min()->set_x(h.x - half_s);
-            hand_msg->mutable_box_min()->set_y(h.y - half_s);
-            hand_msg->mutable_box_max()->set_x(h.x + half_s);
-            hand_msg->mutable_box_max()->set_y(h.y + half_s);
-        }
-
-        // 4. 序列化
         std::string out;
         if (payload.SerializeToString(&out)) {
-            sendto(sock, out.c_str(), out.length(), 0,
-                   (struct sockaddr*)&pc_addr, sizeof(pc_addr));
-            
-            std::cout << "\r[Frame " << frame_id << "] 正在场上运球... 发送字节: " << out.length() << "  " << std::flush;
+            sendto(sock, out.c_str(), out.length(), 0, (struct sockaddr*)&client_addr, client_len);
         }
-
-        usleep(33000); // 维持在 30 FPS 左右
+        usleep(33000); 
     }
 
     close(sock);
