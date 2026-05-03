@@ -2,34 +2,36 @@
 #include <QPainter>
 #include <QPen>
 #include <QFont>
+#include <QDebug>
 
-VideoCanvas::VideoCanvas(QWidget *parent)
+VideoCanvas::VideoCanvas(QWidget* parent)
     : QWidget(parent), m_drawOverlay(true)
 {
-    // 设置背景为黑色，看起来更像播放器
+    // 性能优化：告诉 Qt 这是一个不透明部件，减少底层重绘
     setAttribute(Qt::WA_OpaquePaintEvent);
     setAttribute(Qt::WA_NoSystemBackground);
-    setStyleSheet("background-color: black;");
+
+    // 设置深色背景，流未连接时显得更专业
+    this->setStyleSheet("background-color: #000000;");
 }
 
-void VideoCanvas::updateVideoFrame(const QImage &frame)
+void VideoCanvas::updateVideoFrame(const QImage& frame)
 {
     QMutexLocker locker(&m_mutex);
-    // 这里如果视频流是连续的，可以直接赋值并 update()
-    // 注意：需要确保传入的 QImage 格式正确且不需要深拷贝（除非跨线程需要）
+    // 使用 .copy() 确保在多线程环境下图像数据的完整性
     m_currentFrame = frame.copy();
     locker.unlock();
 
-    update(); // 触发重绘
+    update(); // 请求界面重绘
 }
 
-void VideoCanvas::updateOverlay(const QList<HandData> &hands)
+void VideoCanvas::updateOverlay(const QList<HandData>& hands)
 {
     QMutexLocker locker(&m_mutex);
     m_hands = hands;
     locker.unlock();
 
-    update(); // 触发重绘
+    update(); // 数据到达后刷新，确保框的移动频率能跟上数据流
 }
 
 void VideoCanvas::setDrawOverlay(bool enable)
@@ -38,62 +40,71 @@ void VideoCanvas::setDrawOverlay(bool enable)
     update();
 }
 
-void VideoCanvas::paintEvent(QPaintEvent *event)
+void VideoCanvas::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
 
-    // 为了平滑缩放，开启抗锯齿
+    // 开启抗锯齿，让边缘更平滑
     painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
     QMutexLocker locker(&m_mutex);
 
-    // 1. 绘制底层视频画面
+    // --- 1. 绘制底层视频流 ---
     if (!m_currentFrame.isNull()) {
-        // 将视频画面等比例缩放到窗口大小并居中
-        QRect targetRect = m_currentFrame.rect();
-        targetRect.moveCenter(this->rect().center());
-
-        // 简单暴力：直接拉伸铺满全屏 (实际开发中可以根据需求改为 KeepAspectRatio)
+        // 将 1080p 视频拉伸铺满当前窗口（也可以根据需求使用 KeepAspectRatio）
         painter.drawImage(this->rect(), m_currentFrame);
-    } else {
-        // 如果没有视频流，画个黑底
+    }
+    else {
+        // 无信号时的提示
         painter.fillRect(this->rect(), Qt::black);
+        painter.setPen(Qt::gray);
+        painter.drawText(this->rect(), Qt::AlignCenter, "WAITING FOR STREAM...");
     }
 
-    // 2. 绘制顶层标注框
-    if (m_drawOverlay) {
-        QPen pen(Qt::green, 3);
+    // --- 2. 绘制顶层 AI 标注层 ---
+    if (m_drawOverlay && !m_hands.isEmpty()) {
+        QPen pen(QColor(0, 255, 0), 3); // 经典 AI 绿
         painter.setPen(pen);
-        QFont font("Arial", 12, QFont::Bold);
+
+        QFont font("Consolas", 11, QFont::Bold);
         painter.setFont(font);
 
-        int winWidth = this->width();
-        int winHeight = this->height();
+        int winW = this->width();
+        int winH = this->height();
 
         for (const auto& hand : m_hands) {
-            // 将 0.0~1.0 的归一化坐标还原为当前窗口的实际像素坐标
-            int x = static_cast<int>(hand.rect.x() * winWidth);
-            int y = static_cast<int>(hand.rect.y() * winHeight);
-            int w = static_cast<int>(hand.rect.width() * winWidth);
-            int h = static_cast<int>(hand.rect.height() * winHeight);
+            // 归一化坐标转换 (0.0~1.0 -> 像素)
+            int x = static_cast<int>(hand.rect.x() * winW);
+            int y = static_cast<int>(hand.rect.y() * winH);
+            int w = static_cast<int>(hand.rect.width() * winW);
+            int h = static_cast<int>(hand.rect.height() * winH);
 
             QRect targetBox(x, y, w, h);
 
-            // 画框
+            // 绘制主检测框
             painter.drawRect(targetBox);
 
-            // 画背景色标签，让文字更清晰
-            QString info = QString("%1 (%2%)").arg(hand.label).arg(static_cast<int>(hand.confidence * 100));
-            QRect textRect = painter.fontMetrics().boundingRect(info);
-            textRect.moveTo(x, y - textRect.height() - 2); // 放在框的左上角上方
+            // 绘制标签与置信度
+            QString labelText = QString("%1 %2%").arg(hand.label).arg(static_cast<int>(hand.confidence * 100));
 
-            painter.fillRect(textRect.adjusted(-2, -2, 2, 2), QColor(0, 255, 0, 150)); // 半透明绿底
+            // 计算标签背景尺寸，增加易读性
+            QRect textRect = painter.fontMetrics().boundingRect(labelText);
+            textRect.moveTo(x, y - textRect.height() - 5);
+            textRect.adjust(-4, 0, 4, 2); // 留出一点边距
 
-            painter.setPen(Qt::black); // 黑字
-            painter.drawText(textRect.bottomLeft(), info);
+            // 画半透明标签底
+            painter.fillRect(textRect, QColor(0, 255, 0, 180));
 
-            painter.setPen(pen); // 恢复绿笔画下一个框
+            // 画文字（黑色避开高亮底色）
+            painter.setPen(Qt::black);
+            painter.drawText(textRect, Qt::AlignCenter, labelText);
+
+            // 恢复画笔颜色用于下一个目标
+            painter.setPen(pen);
         }
     }
+
+    // 渲染完毕后，locker 会自动释放
 }
