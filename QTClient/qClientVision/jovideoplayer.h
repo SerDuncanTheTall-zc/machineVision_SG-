@@ -46,7 +46,9 @@ private:
     void updateUiState(bool connected);
     void loadConfig();
     void saveConfig();
-    quint8 currentServoId() const;
+
+    /// 从 ComboBox 读取 servo ID
+    static quint8 comboId(const QComboBox* cmb);
 
     // 核心组件
     VideoCanvas* m_canvas;
@@ -61,7 +63,8 @@ private:
     QLineEdit* m_editIp, * m_editTcpPort, * m_editUdpData, * m_editUdpVideo;
     QPushButton* m_btnConnect;
     QPushButton* m_btnSaveConfig;
-    QComboBox* m_cmbServo;
+    QComboBox* m_cmbTiltServo;   // 上下舵机
+    QComboBox* m_cmbPanServo;    // 左右舵机
     QPushButton* m_btnUp, * m_btnDown, * m_btnLeft, * m_btnRight;
     QPushButton* m_btnRotate;
     QCheckBox* m_cbTrackingMode;

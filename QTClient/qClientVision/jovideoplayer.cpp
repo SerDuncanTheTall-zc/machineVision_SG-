@@ -34,23 +34,25 @@ JoVideoPlayer::JoVideoPlayer(QWidget* parent)
     connect(m_cbTrackingMode, &QCheckBox::toggled, this, &JoVideoPlayer::onTrackingToggled);
     connect(m_btnRotate, &QPushButton::clicked, this, &JoVideoPlayer::onRotateClicked);
 
-    // 舵机控制 (D-Pad) — 按下移动，松开停止
-    auto btnList = { m_btnUp, m_btnDown, m_btnLeft, m_btnRight };
-    for (auto b : btnList) {
-        b->setAutoRepeat(true);
-        b->setAutoRepeatDelay(200);
-        b->setAutoRepeatInterval(80);
-        connect(b, &QPushButton::pressed, this, [this, b]() {
-            quint8 id = currentServoId();
-            if (b == m_btnUp)    m_protocol->servoMove(id, ServoProtocol::DIR_UP);
-            if (b == m_btnDown)  m_protocol->servoMove(id, ServoProtocol::DIR_DOWN);
-            if (b == m_btnLeft)  m_protocol->servoMove(id, ServoProtocol::DIR_LEFT);
-            if (b == m_btnRight) m_protocol->servoMove(id, ServoProtocol::DIR_RIGHT);
+    // 舵机控制 (D-Pad)
+    //   上/下 → Tilt 舵机,  左/右 → Pan 舵机
+    auto setupDpad = [this](QPushButton* btn, ServoProtocol::Direction dir,
+                            const QComboBox* cmb, const QComboBox* stopCmb) {
+        btn->setAutoRepeat(true);
+        btn->setAutoRepeatDelay(200);
+        btn->setAutoRepeatInterval(80);
+        connect(btn, &QPushButton::pressed, this, [this, cmb, dir]() {
+            m_protocol->servoMove(comboId(cmb), dir);
         });
-        connect(b, &QPushButton::released, this, [this]() {
-            m_protocol->servoStop(currentServoId());
+        connect(btn, &QPushButton::released, this, [this, stopCmb]() {
+            m_protocol->servoStop(comboId(stopCmb));
         });
-    }
+    };
+
+    setupDpad(m_btnUp,    ServoProtocol::DIR_UP,    m_cmbTiltServo, m_cmbTiltServo);
+    setupDpad(m_btnDown,  ServoProtocol::DIR_DOWN,  m_cmbTiltServo, m_cmbTiltServo);
+    setupDpad(m_btnLeft,  ServoProtocol::DIR_LEFT,  m_cmbPanServo,  m_cmbPanServo);
+    setupDpad(m_btnRight, ServoProtocol::DIR_RIGHT, m_cmbPanServo,  m_cmbPanServo);
 
     updateUiState(false);
 }
@@ -116,19 +118,28 @@ void JoVideoPlayer::setupUi()
 
     bottomLayout->addSpacing(40);
 
-    // 舵机选择 + 方向键
+    // 舵机分配 + 方向键
     auto* servoBox = new QVBoxLayout();
 
-    // 舵机下拉选择
-    auto* servoSelectLayout = new QHBoxLayout();
-    servoSelectLayout->addWidget(new QLabel("Servo:"));
-    m_cmbServo = new QComboBox();
-    m_cmbServo->addItem("Servo #1", 1);
-    m_cmbServo->addItem("Servo #2", 2);
-    m_cmbServo->addItem("Servo #3", 3);
-    servoSelectLayout->addWidget(m_cmbServo);
-    servoSelectLayout->addStretch();
-    servoBox->addLayout(servoSelectLayout);
+    // 舵机下拉选择：Tilt(上下) + Pan(左右)
+    auto makeServoCombo = []() {
+        auto* cmb = new QComboBox();
+        cmb->addItem("Servo #1", 1);
+        cmb->addItem("Servo #2", 2);
+        cmb->addItem("Servo #3", 3);
+        return cmb;
+    };
+
+    auto* servoAssignLayout = new QHBoxLayout();
+    servoAssignLayout->addWidget(new QLabel("Tilt(UD):"));
+    m_cmbTiltServo = makeServoCombo();
+    servoAssignLayout->addWidget(m_cmbTiltServo);
+    servoAssignLayout->addSpacing(20);
+    servoAssignLayout->addWidget(new QLabel("Pan(LR):"));
+    m_cmbPanServo = makeServoCombo();
+    servoAssignLayout->addWidget(m_cmbPanServo);
+    servoAssignLayout->addStretch();
+    servoBox->addLayout(servoAssignLayout);
 
     // 方向键
     auto* dpad = new QGridLayout();
@@ -203,7 +214,8 @@ void JoVideoPlayer::updateUiState(bool connected)
     m_editUdpVideo->setEnabled(!connected);
 
     m_btnSaveConfig->setEnabled(!connected);
-    m_cmbServo->setEnabled(connected);
+    m_cmbTiltServo->setEnabled(connected);
+    m_cmbPanServo->setEnabled(connected);
     m_btnRotate->setEnabled(connected);
     m_btnUp->setEnabled(connected);
     m_btnDown->setEnabled(connected);
@@ -231,9 +243,9 @@ void JoVideoPlayer::saveConfig()
     s.sync();
 }
 
-quint8 JoVideoPlayer::currentServoId() const
+quint8 JoVideoPlayer::comboId(const QComboBox* cmb)
 {
-    return static_cast<quint8>(m_cmbServo->currentData().toUInt());
+    return static_cast<quint8>(cmb->currentData().toUInt());
 }
 
 void JoVideoPlayer::onTrackingToggled(bool checked)
