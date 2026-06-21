@@ -38,6 +38,7 @@ private slots:
 
     // 指令逻辑
     void onTrackingToggled(bool checked);
+    void onRotateClicked();
     void handleGestureData(uint64_t ts, const QList<HandData>& hands);
 
 private:
@@ -62,6 +63,7 @@ private:
     QPushButton* m_btnSaveConfig;
     QComboBox* m_cmbServo;
     QPushButton* m_btnUp, * m_btnDown, * m_btnLeft, * m_btnRight;
+    QPushButton* m_btnRotate;
     QCheckBox* m_cbTrackingMode;
     QCheckBox* m_cbShowOverlay;
 };

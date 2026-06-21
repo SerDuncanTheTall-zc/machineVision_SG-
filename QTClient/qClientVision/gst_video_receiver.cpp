@@ -1,6 +1,7 @@
 #include "gst_video_receiver.h"
 #include <QDebug>
 #include <QImage>
+#include <QTransform>
 #include <gst/app/gstappsink.h>
 
 GstVideoReceiver::GstVideoReceiver(QObject* parent) : QObject(parent) {
@@ -92,6 +93,22 @@ void GstVideoReceiver::stop() {
     }
 }
 
+void GstVideoReceiver::setRotation(int degrees)
+{
+    // 对齐到 0/90/180/270
+    int aligned = ((degrees % 360) + 360) % 360;
+    aligned = (aligned / 90) * 90;
+    if (aligned != m_rotation) {
+        m_rotation = aligned;
+        qDebug() << "Rotation set to" << m_rotation << "degrees";
+    }
+}
+
+int GstVideoReceiver::rotation() const
+{
+    return m_rotation;
+}
+
 GstFlowReturn GstVideoReceiver::on_new_sample(GstElement* sink, gpointer user_data) {
     auto* self = static_cast<GstVideoReceiver*>(user_data);
 
@@ -126,7 +143,15 @@ GstFlowReturn GstVideoReceiver::on_new_sample(GstElement* sink, gpointer user_da
         // 必须 .copy()，因为 map.data 在 unmap 后会变为野指针
         QImage img(map.data, width, height, QImage::Format_RGBA8888);
         if (!img.isNull()) {
-            emit self->frameReady(img.copy());
+            // 应用旋转
+            if (self->m_rotation != 0) {
+                QTransform t;
+                t.rotate(static_cast<qreal>(self->m_rotation));
+                QImage rotated = img.transformed(t, Qt::SmoothTransformation);
+                emit self->frameReady(rotated);
+            } else {
+                emit self->frameReady(img.copy());
+            }
         }
     }
     else {

@@ -1,5 +1,6 @@
 #include "servo_protocol.h"
 #include <QHostAddress>
+#include <QNetworkProxy>
 #include <QDebug>
 
 // CRC-8-ATM 查找表 (poly=0x07)
@@ -26,6 +27,7 @@ ServoProtocol::ServoProtocol(QObject* parent)
     : QObject(parent)
 {
     m_socket = new QTcpSocket(this);
+    m_socket->setProxy(QNetworkProxy::NoProxy);
     connect(m_socket, &QTcpSocket::connected,    this, &ServoProtocol::onSocketConnected);
     connect(m_socket, &QTcpSocket::disconnected, this, &ServoProtocol::onSocketDisconnected);
     connect(m_socket, &QTcpSocket::errorOccurred,this, &ServoProtocol::onSocketError);

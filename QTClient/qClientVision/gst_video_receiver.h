@@ -22,6 +22,10 @@ public:
     // 停止并清理管道
     void stop();
 
+    /// 设置顺时针旋转角度 (0, 90, 180, 270)
+    void setRotation(int degrees);
+    int rotation() const;
+
 signals:
     // 解码后的 RGBA 图像信号
     void frameReady(const QImage& frame);
@@ -31,6 +35,7 @@ private:
     static GstFlowReturn on_new_sample(GstElement* sink, gpointer user_data);
 
     GstElement* m_pipeline = nullptr;
+    int m_rotation = 0;  // 0, 90, 180, 270
 };
 
 #endif // GST_VIDEO_RECEIVER_H

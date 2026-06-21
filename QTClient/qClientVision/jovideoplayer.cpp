@@ -32,6 +32,7 @@ JoVideoPlayer::JoVideoPlayer(QWidget* parent)
     // UI 交互
     connect(m_cbShowOverlay, &QCheckBox::toggled, m_canvas, &VideoCanvas::setDrawOverlay);
     connect(m_cbTrackingMode, &QCheckBox::toggled, this, &JoVideoPlayer::onTrackingToggled);
+    connect(m_btnRotate, &QPushButton::clicked, this, &JoVideoPlayer::onRotateClicked);
 
     // 舵机控制 (D-Pad) — 按下移动，松开停止
     auto btnList = { m_btnUp, m_btnDown, m_btnLeft, m_btnRight };
@@ -107,6 +108,10 @@ void JoVideoPlayer::setupUi()
     m_cbTrackingMode = new QCheckBox("AI Tracking Mode");
     visionBox->addWidget(m_cbShowOverlay);
     visionBox->addWidget(m_cbTrackingMode);
+
+    m_btnRotate = new QPushButton("Rotate 90°");
+    visionBox->addWidget(m_btnRotate);
+
     bottomLayout->addLayout(visionBox);
 
     bottomLayout->addSpacing(40);
@@ -199,6 +204,7 @@ void JoVideoPlayer::updateUiState(bool connected)
 
     m_btnSaveConfig->setEnabled(!connected);
     m_cmbServo->setEnabled(connected);
+    m_btnRotate->setEnabled(connected);
     m_btnUp->setEnabled(connected);
     m_btnDown->setEnabled(connected);
     m_btnLeft->setEnabled(connected);
@@ -233,6 +239,12 @@ quint8 JoVideoPlayer::currentServoId() const
 void JoVideoPlayer::onTrackingToggled(bool checked)
 {
     m_protocol->setTracking(checked);
+}
+
+void JoVideoPlayer::onRotateClicked()
+{
+    int next = (m_videoReceiver->rotation() + 90) % 360;
+    m_videoReceiver->setRotation(next);
 }
 
 void JoVideoPlayer::handleGestureData(uint64_t ts, const QList<HandData>& hands)
