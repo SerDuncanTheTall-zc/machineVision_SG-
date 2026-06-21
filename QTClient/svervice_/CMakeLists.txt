@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(servo_server
     servo_server.cpp
+    gst_streamer.cpp
 )
 
 target_include_directories(servo_server

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string>
 
 // --- PWM 常量 (与原测试代码一致) ---
 #define PERIOD_NS   20000000
@@ -59,7 +60,7 @@ int  parse_frame(const uint8_t* data, int len);
 void handle_servo_move(uint8_t servo_id, uint8_t dir, uint8_t speed);
 void handle_servo_abs(uint8_t servo_id, int16_t pan, int16_t tilt);
 void handle_tracking_ctrl(uint8_t enable);
-void handle_stream_ctrl(uint8_t enable, uint16_t udp_data, uint16_t udp_video);
+void handle_stream_ctrl(uint8_t enable, uint16_t udp_data, uint16_t udp_video, const std::string& client_ip);
 
 // CRC-8-ATM
 uint8_t crc8(const uint8_t* data, int len);

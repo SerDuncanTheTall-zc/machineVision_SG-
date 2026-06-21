@@ -1,4 +1,5 @@
 #include "servo_server.h"
+#include "gst_streamer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,8 @@ static int g_client_fd = -1;
 static int g_running = 1;
 static pthread_t g_motion_thread;
 static pthread_mutex_t g_servo_mutex = PTHREAD_MUTEX_INITIALIZER;
+static GstStreamer g_streamer;
+static std::string g_client_ip;
 
 static int clamp_duty(int duty)
 {
@@ -60,8 +63,6 @@ static int servo_index_from_id(uint8_t servo_id)
 
 static int angle_to_duty_ns(int angle_001deg)
 {
-    // 客户端 abs 单位为 0.01°，这里按 60°~120° 线性映射
-    // 允许传 6000~12000，对超界值做截断
     if (angle_001deg < 6000)  angle_001deg = 6000;
     if (angle_001deg > 12000) angle_001deg = 12000;
 
@@ -151,7 +152,6 @@ void handle_servo_abs(uint8_t servo_id, int16_t pan, int16_t tilt)
         return;
     }
 
-    // 服务端无法知道该舵机是 Pan 还是 Tilt，这里取非 0 值优先，否则取 pan
     int angle_001deg = pan != 0 ? pan : tilt;
     int duty = clamp_duty(angle_to_duty_ns(angle_001deg));
 
@@ -170,11 +170,17 @@ void handle_tracking_ctrl(uint8_t enable)
     printf("[CMD] TRACKING %s\n", g_tracking_enabled ? "ON" : "OFF");
 }
 
-void handle_stream_ctrl(uint8_t enable, uint16_t udp_data, uint16_t udp_video)
+void handle_stream_ctrl(uint8_t enable, uint16_t udp_data, uint16_t udp_video, const std::string& client_ip)
 {
-    printf("[CMD] STREAM %s udp_data=%u udp_video=%u\n",
-           enable ? "ON" : "OFF", udp_data, udp_video);
-    // 这里留给你接入板子的推流/识别进程控制逻辑
+    printf("[CMD] STREAM %s udp_data=%u udp_video=%u ip=%s\n",
+           enable ? "ON" : "OFF", udp_data, udp_video, client_ip.c_str());
+
+    if (enable) {
+        g_streamer.start(client_ip, udp_video);
+    } else {
+        g_streamer.stop();
+    }
+    // TODO: udp_data 通道的手势/AI 数据发送逻辑
 }
 
 static void* motion_worker(void*)
@@ -206,7 +212,7 @@ static void* motion_worker(void*)
             }
         }
         pthread_mutex_unlock(&g_servo_mutex);
-        usleep(20000); // 50Hz
+        usleep(20000);
     }
     return NULL;
 }
@@ -257,7 +263,7 @@ int parse_frame(const uint8_t* frame, int total_len)
         if (n == 5) {
             uint16_t udp_data = (uint16_t)((p[1] << 8) | p[2]);
             uint16_t udp_video = (uint16_t)((p[3] << 8) | p[4]);
-            handle_stream_ctrl(p[0], udp_data, udp_video);
+            handle_stream_ctrl(p[0], udp_data, udp_video, g_client_ip);
             return 0;
         }
         break;
@@ -357,13 +363,16 @@ void servo_server_run()
     while (g_running) {
         if (g_client_fd < 0) {
             printf("[INFO] waiting client...\n");
-            g_client_fd = accept(g_server_fd, NULL, NULL);
+            struct sockaddr_in cli_addr;
+            socklen_t addr_len = sizeof(cli_addr);
+            g_client_fd = accept(g_server_fd, (struct sockaddr*)&cli_addr, &addr_len);
             if (g_client_fd < 0) {
                 if (errno == EINTR) continue;
                 perror("accept");
                 break;
             }
-            printf("[INFO] client connected\n");
+            g_client_ip = std::string(inet_ntoa(cli_addr.sin_addr));
+            printf("[INFO] client connected from %s\n", g_client_ip.c_str());
             rxlen = 0;
         }
 
@@ -381,6 +390,7 @@ void servo_server_run()
             perror("select");
             close(g_client_fd);
             g_client_fd = -1;
+            g_streamer.stop();
             continue;
         }
 
@@ -390,6 +400,7 @@ void servo_server_run()
             int n = recv(g_client_fd, rxbuf + rxlen, sizeof(rxbuf) - rxlen, 0);
             if (n <= 0) {
                 printf("[INFO] client disconnected\n");
+                g_streamer.stop();
                 close(g_client_fd);
                 g_client_fd = -1;
                 pthread_mutex_lock(&g_servo_mutex);
@@ -407,6 +418,7 @@ void servo_server_run()
 void servo_server_stop()
 {
     g_running = 0;
+    g_streamer.stop();
 
     if (g_client_fd >= 0) {
         close(g_client_fd);
