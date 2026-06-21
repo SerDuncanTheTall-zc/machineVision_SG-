@@ -12,6 +12,10 @@ JoVideoPlayer::JoVideoPlayer(QWidget* parent)
     loadConfig();
     setupUi();
 
+    // 回填配置中保存的舵机选择
+    selectComboData(m_cmbTiltServo, m_config.tiltServoId);
+    selectComboData(m_cmbPanServo,  m_config.panServoId);
+
     m_protocol = new ServoProtocol(this);
     m_gestureReceiver = new GestureReceiver(this);
     m_videoReceiver = new GstVideoReceiver(this);
@@ -231,6 +235,8 @@ void JoVideoPlayer::loadConfig()
     m_config.tcpPort      = s.value("network/tcp_port",   m_config.tcpPort).toUInt();
     m_config.udpDataPort  = s.value("network/udp_data",   m_config.udpDataPort).toUInt();
     m_config.udpVideoPort = s.value("network/udp_video",  m_config.udpVideoPort).toUInt();
+    m_config.tiltServoId  = static_cast<quint8>(s.value("servo/tilt_id", m_config.tiltServoId).toUInt());
+    m_config.panServoId   = static_cast<quint8>(s.value("servo/pan_id",  m_config.panServoId).toUInt());
 }
 
 void JoVideoPlayer::saveConfig()
@@ -240,12 +246,22 @@ void JoVideoPlayer::saveConfig()
     s.setValue("network/tcp_port",  m_editTcpPort->text().toUInt());
     s.setValue("network/udp_data",  m_editUdpData->text().toUInt());
     s.setValue("network/udp_video", m_editUdpVideo->text().toUInt());
+    s.setValue("servo/tilt_id",     comboId(m_cmbTiltServo));
+    s.setValue("servo/pan_id",      comboId(m_cmbPanServo));
     s.sync();
 }
 
 quint8 JoVideoPlayer::comboId(const QComboBox* cmb)
 {
     return static_cast<quint8>(cmb->currentData().toUInt());
+}
+
+void JoVideoPlayer::selectComboData(QComboBox* cmb, int data)
+{
+    int idx = cmb->findData(data);
+    if (idx >= 0) {
+        cmb->setCurrentIndex(idx);
+    }
 }
 
 void JoVideoPlayer::onTrackingToggled(bool checked)

@@ -19,6 +19,8 @@ struct NetConfig {
     quint16 tcpPort = 9000;
     quint16 udpDataPort = 8888;
     quint16 udpVideoPort = 5000;
+    quint8  tiltServoId = 1;   // 上下舵机编号
+    quint8  panServoId  = 2;   // 左右舵机编号
 };
 
 class JoVideoPlayer : public QMainWindow
@@ -47,6 +49,8 @@ private:
     void loadConfig();
     void saveConfig();
 
+    /// 将 ComboBox 切换到指定 data 值
+    static void selectComboData(QComboBox* cmb, int data);
     /// 从 ComboBox 读取 servo ID
     static quint8 comboId(const QComboBox* cmb);
 
