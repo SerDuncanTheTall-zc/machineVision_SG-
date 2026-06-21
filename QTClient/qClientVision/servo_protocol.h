@@ -32,8 +32,8 @@ class ServoProtocol : public QObject
 public:
     enum Direction {
         DIR_STOP  = 0,
-        DIR_UP    = 1,
-        DIR_DOWN  = 2,
+        DIR_DOWN    = 1,
+        DIR_UP  = 2,
         DIR_LEFT  = 3,
         DIR_RIGHT = 4
     };
