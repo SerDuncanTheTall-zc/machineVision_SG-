@@ -8,6 +8,7 @@ SOURCES += \
     main.cpp \
     jovideoplayer.cpp \
     gesture_receiver.cpp \
+    servo_protocol.cpp \
     vcpkg_installed/x64-windows/include/gesture.pb.cc \
     video_canvas.cpp
 
@@ -15,6 +16,7 @@ HEADERS += \
     gst_video_receiver.h \
     jovideoplayer.h \
     gesture_receiver.h \
+    servo_protocol.h \
     video_canvas.h \
     gesture.pb.h
 
