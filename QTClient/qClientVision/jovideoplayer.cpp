@@ -4,22 +4,27 @@
 #include <QGridLayout>
 #include <QMessageBox>
 #include <QIntValidator>
+#include <QGroupBox>
 
 JoVideoPlayer::JoVideoPlayer(QWidget* parent)
     : QMainWindow(parent)
 {
+    loadConfig();
     setupUi();
 
-    m_tcpSocket = new QTcpSocket(this);
+    m_protocol = new ServoProtocol(this);
     m_gestureReceiver = new GestureReceiver(this);
     m_videoReceiver = new GstVideoReceiver(this);
 
-    // TCP 状态监听
+    // 协议层信号 → UI 层
+    connect(m_protocol, &ServoProtocol::connected,    this, &JoVideoPlayer::onProtocolConnected);
+    connect(m_protocol, &ServoProtocol::disconnected, this, &JoVideoPlayer::onProtocolDisconnected);
+    connect(m_protocol, &ServoProtocol::errorOccurred,this, &JoVideoPlayer::onProtocolError);
+
+    // 连接按钮
     connect(m_btnConnect, &QPushButton::clicked, this, &JoVideoPlayer::onBtnConnectClicked);
-    connect(m_tcpSocket, &QTcpSocket::connected, this, &JoVideoPlayer::onTcpConnected);
-    connect(m_tcpSocket, &QTcpSocket::disconnected, this, &JoVideoPlayer::onTcpDisconnected);
-    //connect(m_tcpSocket, &QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred), this, &JoVideoPlayer::onTcpError);
-    connect(m_tcpSocket, &QTcpSocket::errorOccurred, this, &JoVideoPlayer::onTcpError);
+    connect(m_btnSaveConfig, &QPushButton::clicked, this, &JoVideoPlayer::saveConfig);
+
     // 数据流链路
     connect(m_gestureReceiver, &GestureReceiver::dataReceived, this, &JoVideoPlayer::handleGestureData);
     connect(m_videoReceiver, &GstVideoReceiver::frameReady, m_canvas, &VideoCanvas::updateVideoFrame);
@@ -28,9 +33,23 @@ JoVideoPlayer::JoVideoPlayer(QWidget* parent)
     connect(m_cbShowOverlay, &QCheckBox::toggled, m_canvas, &VideoCanvas::setDrawOverlay);
     connect(m_cbTrackingMode, &QCheckBox::toggled, this, &JoVideoPlayer::onTrackingToggled);
 
-    // 舵机控制 (D-Pad)
+    // 舵机控制 (D-Pad) — 按下移动，松开停止
     auto btnList = { m_btnUp, m_btnDown, m_btnLeft, m_btnRight };
-    for (auto b : btnList) connect(b, &QPushButton::clicked, this, &JoVideoPlayer::sendServoCommand);
+    for (auto b : btnList) {
+        b->setAutoRepeat(true);
+        b->setAutoRepeatDelay(200);
+        b->setAutoRepeatInterval(80);
+        connect(b, &QPushButton::pressed, this, [this, b]() {
+            quint8 id = currentServoId();
+            if (b == m_btnUp)    m_protocol->servoMove(id, ServoProtocol::DIR_UP);
+            if (b == m_btnDown)  m_protocol->servoMove(id, ServoProtocol::DIR_DOWN);
+            if (b == m_btnLeft)  m_protocol->servoMove(id, ServoProtocol::DIR_LEFT);
+            if (b == m_btnRight) m_protocol->servoMove(id, ServoProtocol::DIR_RIGHT);
+        });
+        connect(b, &QPushButton::released, this, [this]() {
+            m_protocol->servoStop(currentServoId());
+        });
+    }
 
     updateUiState(false);
 }
@@ -68,6 +87,10 @@ void JoVideoPlayer::setupUi()
     m_btnConnect->setMinimumWidth(100);
     settingsLayout->addWidget(m_btnConnect);
 
+    m_btnSaveConfig = new QPushButton("Save");
+    m_btnSaveConfig->setMinimumWidth(60);
+    settingsLayout->addWidget(m_btnSaveConfig);
+
     mainLayout->addLayout(settingsLayout);
 
     // --- 2. 视频画布 ---
@@ -88,7 +111,21 @@ void JoVideoPlayer::setupUi()
 
     bottomLayout->addSpacing(40);
 
-    // 舵机方向键
+    // 舵机选择 + 方向键
+    auto* servoBox = new QVBoxLayout();
+
+    // 舵机下拉选择
+    auto* servoSelectLayout = new QHBoxLayout();
+    servoSelectLayout->addWidget(new QLabel("Servo:"));
+    m_cmbServo = new QComboBox();
+    m_cmbServo->addItem("Servo #1", 1);
+    m_cmbServo->addItem("Servo #2", 2);
+    m_cmbServo->addItem("Servo #3", 3);
+    servoSelectLayout->addWidget(m_cmbServo);
+    servoSelectLayout->addStretch();
+    servoBox->addLayout(servoSelectLayout);
+
+    // 方向键
     auto* dpad = new QGridLayout();
     m_btnUp = new QPushButton("UP");
     m_btnDown = new QPushButton("DOWN");
@@ -102,7 +139,9 @@ void JoVideoPlayer::setupUi()
     dpad->addWidget(m_btnLeft, 1, 0);
     dpad->addWidget(m_btnRight, 1, 2);
     dpad->addWidget(m_btnDown, 2, 1);
-    bottomLayout->addLayout(dpad);
+    servoBox->addLayout(dpad);
+
+    bottomLayout->addLayout(servoBox);
 
     bottomLayout->addStretch();
     mainLayout->addLayout(bottomLayout);
@@ -110,60 +149,43 @@ void JoVideoPlayer::setupUi()
     this->setCentralWidget(centralWidget);
 }
 
-//void JoVideoPlayer::onBtnConnectClicked()
-//{
-//    if (m_tcpSocket->state() == QAbstractSocket::UnconnectedState) {
-//        // 更新当前配置
-//        m_config.serverIp = m_editIp->text();
-//        m_config.tcpPort = m_editTcpPort->text().toUShort();
-//        m_config.udpDataPort = m_editUdpData->text().toUShort();
-//        m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
-//
-//        m_tcpSocket->connectToHost(m_config.serverIp, m_config.tcpPort);
-//        m_btnConnect->setText("Connecting...");
-//    }
-//    else {
-//        m_tcpSocket->disconnectFromHost();
-//    }
-//}
-
 void JoVideoPlayer::onBtnConnectClicked()
 {
-    // 调试专用：跳过 TCP 建立过程，直接读取 UI 上的端口并开跑
-    m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
+    if (!m_protocol->isConnected()) {
+        m_config.serverIp = m_editIp->text();
+        m_config.tcpPort = m_editTcpPort->text().toUShort();
+        m_config.udpDataPort = m_editUdpData->text().toUShort();
+        m_config.udpVideoPort = m_editUdpVideo->text().toUShort();
 
-    qDebug() << "Testing mode: Skipping TCP, starting UDP Video on" << m_config.udpVideoPort;
-
-    // 直接调用启动函数
-    m_videoReceiver->start(m_config.udpVideoPort);
-
-    // 更新 UI 状态（假装连上了）
-    updateUiState(true);
+        m_protocol->connectToHost(m_config.serverIp, m_config.tcpPort);
+        m_btnConnect->setText("Connecting...");
+    }
+    else {
+        m_protocol->disconnectFromHost();
+    }
 }
 
-void JoVideoPlayer::onTcpConnected()
+void JoVideoPlayer::onProtocolConnected()
 {
     updateUiState(true);
 
-    // 只有 TCP 连上了，才根据配置打开 UDP 接收器
     m_gestureReceiver->start(m_config.udpDataPort);
     m_videoReceiver->start(m_config.udpVideoPort);
 
-    // 通知板子开启流推送
-    m_tcpSocket->write("CMD_START_STREAM\n");
+    // 通过协议通知板子开启流推送
+    m_protocol->setStream(true, m_config.udpDataPort, m_config.udpVideoPort);
 }
 
-void JoVideoPlayer::onTcpDisconnected()
+void JoVideoPlayer::onProtocolDisconnected()
 {
     updateUiState(false);
     m_gestureReceiver->stop();
     m_videoReceiver->stop();
 }
 
-void JoVideoPlayer::onTcpError(QAbstractSocket::SocketError error)
+void JoVideoPlayer::onProtocolError(const QString& msg)
 {
-    Q_UNUSED(error);
-    QMessageBox::warning(this, "Connection Error", m_tcpSocket->errorString());
+    QMessageBox::warning(this, "Connection Error", msg);
     updateUiState(false);
 }
 
@@ -175,6 +197,8 @@ void JoVideoPlayer::updateUiState(bool connected)
     m_editUdpData->setEnabled(!connected);
     m_editUdpVideo->setEnabled(!connected);
 
+    m_btnSaveConfig->setEnabled(!connected);
+    m_cmbServo->setEnabled(connected);
     m_btnUp->setEnabled(connected);
     m_btnDown->setEnabled(connected);
     m_btnLeft->setEnabled(connected);
@@ -182,21 +206,33 @@ void JoVideoPlayer::updateUiState(bool connected)
     m_cbTrackingMode->setEnabled(connected);
 }
 
-void JoVideoPlayer::sendServoCommand()
+void JoVideoPlayer::loadConfig()
 {
-    if (!m_tcpSocket->isOpen()) return;
-    QPushButton* btn = qobject_cast<QPushButton*>(sender());
-    if (btn == m_btnUp)    m_tcpSocket->write("SERVO_UP\n");
-    if (btn == m_btnDown)  m_tcpSocket->write("SERVO_DOWN\n");
-    if (btn == m_btnLeft)  m_tcpSocket->write("SERVO_LEFT\n");
-    if (btn == m_btnRight) m_tcpSocket->write("SERVO_RIGHT\n");
+    QSettings s("JoVision", "RK3576Controller");
+    m_config.serverIp     = s.value("network/ip",         m_config.serverIp).toString();
+    m_config.tcpPort      = s.value("network/tcp_port",   m_config.tcpPort).toUInt();
+    m_config.udpDataPort  = s.value("network/udp_data",   m_config.udpDataPort).toUInt();
+    m_config.udpVideoPort = s.value("network/udp_video",  m_config.udpVideoPort).toUInt();
+}
+
+void JoVideoPlayer::saveConfig()
+{
+    QSettings s("JoVision", "RK3576Controller");
+    s.setValue("network/ip",        m_editIp->text());
+    s.setValue("network/tcp_port",  m_editTcpPort->text().toUInt());
+    s.setValue("network/udp_data",  m_editUdpData->text().toUInt());
+    s.setValue("network/udp_video", m_editUdpVideo->text().toUInt());
+    s.sync();
+}
+
+quint8 JoVideoPlayer::currentServoId() const
+{
+    return static_cast<quint8>(m_cmbServo->currentData().toUInt());
 }
 
 void JoVideoPlayer::onTrackingToggled(bool checked)
 {
-    if (m_tcpSocket->isOpen()) {
-        m_tcpSocket->write(checked ? "TRACKING_ON\n" : "TRACKING_OFF\n");
-    }
+    m_protocol->setTracking(checked);
 }
 
 void JoVideoPlayer::handleGestureData(uint64_t ts, const QList<HandData>& hands)

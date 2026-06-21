@@ -5,11 +5,13 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include <QLineEdit>
-#include <QTcpSocket>
+#include <QComboBox>
 #include <QLabel>
+#include <QSettings>
 #include "video_canvas.h"
 #include "gesture_receiver.h"
 #include "gst_video_receiver.h"
+#include "servo_protocol.h"
 
 // 网络配置结构体
 struct NetConfig {
@@ -30,24 +32,26 @@ public:
 private slots:
     // 连接逻辑
     void onBtnConnectClicked();
-    void onTcpConnected();
-    void onTcpDisconnected();
-    void onTcpError(QAbstractSocket::SocketError error);
+    void onProtocolConnected();
+    void onProtocolDisconnected();
+    void onProtocolError(const QString& msg);
 
     // 指令逻辑
-    void sendServoCommand();
     void onTrackingToggled(bool checked);
     void handleGestureData(uint64_t ts, const QList<HandData>& hands);
 
 private:
     void setupUi();
     void updateUiState(bool connected);
+    void loadConfig();
+    void saveConfig();
+    quint8 currentServoId() const;
 
     // 核心组件
     VideoCanvas* m_canvas;
     GestureReceiver* m_gestureReceiver;
     GstVideoReceiver* m_videoReceiver;
-    QTcpSocket* m_tcpSocket;
+    ServoProtocol* m_protocol;
 
     // 当前生效的配置
     NetConfig m_config;
@@ -55,6 +59,8 @@ private:
     // UI 元素
     QLineEdit* m_editIp, * m_editTcpPort, * m_editUdpData, * m_editUdpVideo;
     QPushButton* m_btnConnect;
+    QPushButton* m_btnSaveConfig;
+    QComboBox* m_cmbServo;
     QPushButton* m_btnUp, * m_btnDown, * m_btnLeft, * m_btnRight;
     QCheckBox* m_cbTrackingMode;
     QCheckBox* m_cbShowOverlay;
