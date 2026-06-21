@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package VisionData;
+
+// 单个手势或目标的检测信息
+message DetectionResult {
+    int32 id = 1;           // 目标ID
+    string label = 2;       // 类别名称 (如: "palm", "fist")
+    float x = 3;            // 归一化中心点 X (0.0 - 1.0)
+    float y = 4;            // 归一化中心点 Y (0.0 - 1.0)
+    float width = 5;        // 归一化宽度
+    float height = 6;       // 归一化高度
+    float confidence = 7;   // 置信度
+}
+
+// 关键点信息 (用于手势细节或人体姿态)
+message KeyPoint {
+    float x = 1;
+    float y = 2;
+    float score = 3;
+}
+
+// 完整的一帧识别结果
+message FramePacket {
+    uint64 timestamp = 1;               // 时间戳 (用于同步)
+    int32 frame_id = 2;                 // 帧序号
+    repeated DetectionResult results = 3; // 检测框列表
+    repeated KeyPoint hand_landmarks = 4; // 手部关键点 (可选)
+}
+
+// 客户端发给板子的控制指令
+message ControlCommand {
+    enum CommandType {
+        STOP = 0;
+        START_TRACKING = 1;     // 开启视觉追踪
+        MANUAL_MOVE = 2;        // 手动转动舵机
+    }
+    CommandType type = 1;
+    float pan_angle = 2;        // 水平角度 (手动模式)
+    float tilt_angle = 3;       // 垂直角度 (手动模式)
+}

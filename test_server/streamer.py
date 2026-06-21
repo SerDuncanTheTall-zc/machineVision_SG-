@@ -5,7 +5,7 @@ import time
 
 # --- 配置参数 ---
 # 请确保 IP 是你 PC 的当前地址
-TARGET_IP = "192.168.2.103" 
+TARGET_IP = "192.168.1.5" 
 PORT = 5000
 DEVICE = "/dev/video73"
 WIDTH, HEIGHT = 1920, 1080
